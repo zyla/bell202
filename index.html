@@ -1,18 +1,16 @@
-Source:
+Modulator output:
 <div>
   <canvas id="osc1" width=1000 height=400></canvas>
 </div>
-Demodulator:
+Raw input:
+<div>
+  <canvas id="osc3" width=1000 height=400></canvas>
+</div>
+Demodulated input:
 <div>
   <canvas id="osc2" width=1000 height=400></canvas>
 </div>
-<button id=stop onclick="audioCtx.close();" style="display:none">Stop</button>
-<button id=start onclick="
-    start().then(() => console.log('resumed'));
-    this.style.display='none';
-    document.getElementById('stop').style.display='';
-  ">Start</button>
-<button onclick="sendBits();">Send</button>
+<button id=stop onclick="audioCtx.close();">Stop</button>
 <div>
   <form onsubmit="sendText(this.querySelector('input').value); return false;">
     <input type="text">

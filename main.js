@@ -1,5 +1,6 @@
 async function start () {
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  window.audioCtx = audioCtx;
   await audioCtx.audioWorklet.addModule('worklet.js')
   generator = new AudioWorkletNode(audioCtx, 'modulator', { numberOfOutputs: 2, outputChannelCount: [1, 1] });
 
@@ -9,12 +10,20 @@ async function start () {
   generator.connect(osc1, 0, 0);
   generator.connect(osc1, 1, 1);
 
+  const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+  const input = audioCtx.createMediaStreamSource(stream);
+
   const demodulator = new AudioWorkletNode(audioCtx, 'demodulator');
-  generator.connect(demodulator);
+//  generator.connect(demodulator);
+  input.connect(demodulator);
+
+  const osc3 = startOscilloscope(audioCtx, '#osc3');
+  input.connect(osc3, 0, 0);
+  input.connect(osc3, 0, 1);
 
   const osc2 = startOscilloscope(audioCtx, '#osc2');
   demodulator.connect(osc2, 0, 0);
-  generator.connect(osc2, 1, 1);
+  input.connect(osc2, 0, 1);
 
   setTimeout(() => {
     sendBits([1,0,0,1,0,1,0,0,0,0,1]);

@@ -57,11 +57,15 @@ registerProcessor('modulator', Modulator);
 
 class Exporter extends AudioWorkletProcessor {
   process (inputs, outputs, parameters) {
+    if(inputs[0].length === 0 || inputs[1].length === 0) {
+      return true;
+    }
+
     assertEqual('number of inputs', inputs.length, 2);
     assertEqual('number of input[0] channels', inputs[0].length, 1);
     assertEqual('number of input[1] channels', inputs[1].length, 1);
 
-    if(inputs[1][0].some(x => x !== 0)) {
+    if(inputs[1][0].some(x => Math.abs(x) >= 0.1)) {
       this.port.postMessage(Float32Array.from(inputs[0][0]));
     }
     return true;
@@ -93,6 +97,7 @@ class Integrator {
   }
 }
 
+// Heavily inspired by: https://www.notblackmagic.com/bitsnpieces/afsk/
 class Demodulator extends AudioWorkletProcessor {
   constructor(...args) {
     super(...args);
@@ -108,6 +113,9 @@ class Demodulator extends AudioWorkletProcessor {
   }
 
   process (inputs, outputs, parameters) {
+    if(inputs[0].length === 0) {
+      return true;
+    }
     assertEqual('number of inputs', inputs.length, 1);
     assertEqual('number of input channels', inputs[0].length, 1);
     assertEqual('number of outputs', outputs.length, 1);
@@ -121,10 +129,13 @@ class Demodulator extends AudioWorkletProcessor {
       this.spaceI.push(input[i] * Math.sin(2 * Math.PI * this.sampleIndex * SPACE_FREQ / sampleRate));
       this.spaceQ.push(input[i] * Math.cos(2 * Math.PI * this.sampleIndex * SPACE_FREQ / sampleRate));
 
-      output[i] = clamp(
-        this.markI.valueSq() + this.markQ.valueSq()
-        - this.spaceI.valueSq() - this.spaceQ.valueSq()
-      );
+      const value =
+          this.markI.valueSq() + this.markQ.valueSq()
+          - this.spaceI.valueSq() - this.spaceQ.valueSq();
+
+      const threshold = 0.5;
+
+      output[i] = value >= threshold ? 1 : value <= -threshold ? -1 : value;
 
       this.sampleIndex++;
     }
