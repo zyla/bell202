@@ -133,9 +133,9 @@ class Demodulator extends AudioWorkletProcessor {
           this.markI.valueSq() + this.markQ.valueSq()
           - this.spaceI.valueSq() - this.spaceQ.valueSq();
 
-      const threshold = 0.5;
-
-      output[i] = value >= threshold ? 1 : value <= -threshold ? -1 : value;
+//      const threshold = 0.5;
+//      output[i] = value >= threshold ? 1 : value <= -threshold ? -1 : value;
+      output[i] = clamp(value);
 
       this.sampleIndex++;
     }
