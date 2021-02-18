@@ -8,4 +8,12 @@
     document.getElementById('stop').style.display='';
   ">Start</button>
 <button onclick="sendBits();">Send</button>
+<div>
+  <form onsubmit="sendText(this.querySelector('input').value); return false;">
+    <input type="text">
+  </form>
+</div>
 <script src="main.js"></script>
+<script>
+document.querySelector('input').focus();
+</script>

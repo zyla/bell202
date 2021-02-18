@@ -4,11 +4,16 @@ var generator;
 
 var analyser;
 var dataArray;
+var dataEnd = 0;
+
+var exporter;
 
 async function start () {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   await audioCtx.audioWorklet.addModule('worklet.js')
   generator = new AudioWorkletNode(audioCtx, 'modulator');
+
+  exporter = new AudioWorkletNode(audioCtx, 'exporter');
 
   // const generator = audioCtx.createOscillator();
   // generator.start();
@@ -16,18 +21,39 @@ async function start () {
 
   generator.connect(audioCtx.destination);
 
-  analyser = audioCtx.createAnalyser();
-  generator.connect(analyser);
-  analyser.fftSize = 1024;
-  dataArray = new Uint8Array(analyser.frequencyBinCount);
+  generator.connect(exporter);
+
+  dataArray = new Float32Array(512);
+
+  exporter.port.onmessage = (event) => {
+    const samples = event.data;
+    for(let i = 0; i < samples.length; i++) {
+      dataArray[dataEnd] = samples[i];
+      dataEnd = (dataEnd + 1) % dataArray.length;
+    }
+  };
 
   draw();
 }
 
+start();
+
 function sendBits(bits) {
-  bits = bits || [0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1];
+  bits = bits || [1,0,0,1,0,1];
   console.log('send bits', bits);
   generator.port.postMessage({ bits });
+}
+
+function sendText(text) {
+  console.log('send text', text);
+  const bits = [];
+  for(let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    for(let j = 0; j < 8; j++) {
+      bits.push(c & (0x80 >> j) ? 1 : 0);
+    }
+  }
+  sendBits(bits);
 }
 
 // Get a canvas defined with ID "oscilloscope"
@@ -37,10 +63,7 @@ var canvasCtx = canvas.getContext("2d");
 // draw an oscilloscope of the current audio source
 
 function draw() {
-
   requestAnimationFrame(draw);
-
-  analyser.getByteTimeDomainData(dataArray);
 
   canvasCtx.fillStyle = "rgb(200, 200, 200)";
   canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -55,7 +78,7 @@ function draw() {
 
   for (var i = 0; i < dataArray.length; i++) {
 
-    var v = dataArray[i] / 128.0;
+    var v = 1 - dataArray[i];
     var y = v * canvas.height / 2;
 
     if (i === 0) {
@@ -67,6 +90,6 @@ function draw() {
     x += sliceWidth;
   }
 
-  canvasCtx.lineTo(canvas.width, canvas.height / 2);
+//  canvasCtx.lineTo(canvas.width, canvas.height / 2);
   canvasCtx.stroke();
 }
