@@ -10,7 +10,7 @@ async function start () {
   generator.connect(osc1, 0, 0);
   generator.connect(osc1, 1, 1);
 
-  const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false } });
   const input = audioCtx.createMediaStreamSource(stream);
 
   const demodulator = new AudioWorkletNode(audioCtx, 'demodulator');
