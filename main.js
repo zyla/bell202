@@ -1,17 +1,24 @@
 async function start () {
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   await audioCtx.audioWorklet.addModule('worklet.js')
-  generator = new AudioWorkletNode(audioCtx, 'modulator');
+  generator = new AudioWorkletNode(audioCtx, 'modulator', { numberOfOutputs: 2, outputChannelCount: [1, 1] });
 
-//  generator.connect(audioCtx.destination);
+  generator.connect(audioCtx.destination);
 
-  startOscilloscope(audioCtx, '#osc1', generator);
+  const osc1 = startOscilloscope(audioCtx, '#osc1');
+  generator.connect(osc1, 0, 0);
+  generator.connect(osc1, 1, 1);
 
   const demodulator = new AudioWorkletNode(audioCtx, 'demodulator');
   generator.connect(demodulator);
-  startOscilloscope(audioCtx, '#osc2', demodulator);
 
-  sendBits([1,0,0,1,0,1,0,0,0,0,1]);
+  const osc2 = startOscilloscope(audioCtx, '#osc2');
+  demodulator.connect(osc2, 0, 0);
+  generator.connect(osc2, 1, 1);
+
+  setTimeout(() => {
+    sendBits([1,0,0,1,0,1,0,0,0,0,1]);
+  }, 0);
 }
 
 start();
@@ -33,11 +40,10 @@ function sendText(text) {
   sendBits(bits);
 }
 
-function startOscilloscope(audioCtx, selector, source) {
-  const exporter = new AudioWorkletNode(audioCtx, 'exporter');
-  source.connect(exporter);
+function startOscilloscope(audioCtx, selector) {
+  const exporter = new AudioWorkletNode(audioCtx, 'exporter', { numberOfInputs: 2 });
 
-  var dataArray = new Float32Array(512);
+  var dataArray = new Float32Array(44110 / 1200 * 32);
   var dataEnd = 0;
 
   exporter.port.onmessage = (event) => {
@@ -55,6 +61,8 @@ function startOscilloscope(audioCtx, selector, source) {
 
   function draw() {
     requestAnimationFrame(draw);
+
+    canvas.width = document.body.clientWidth - 20;
 
     canvasCtx.fillStyle = "rgb(200, 200, 200)";
     canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -83,4 +91,6 @@ function startOscilloscope(audioCtx, selector, source) {
 
     canvasCtx.stroke();
   }
+
+  return exporter;
 }

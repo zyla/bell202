@@ -1,3 +1,7 @@
+const BAUD_RATE = 1200;
+const MARK_FREQ = 1200;
+const SPACE_FREQ = 2200;
+
 class Modulator extends AudioWorkletProcessor {
   constructor(...args) {
     super(...args);
@@ -7,7 +11,7 @@ class Modulator extends AudioWorkletProcessor {
     this.startPhase = 0;
     this.bits = [];
 
-    this.bitDuration = 1 / 1200;
+    this.bitDuration = 1 / BAUD_RATE;
     this.sampleDuration = 1 / sampleRate;
 
     this.port.onmessage = (event) => {
@@ -18,29 +22,33 @@ class Modulator extends AudioWorkletProcessor {
   }
 
   process (inputs, outputs, parameters) {
-    const output = outputs[0];
-    output.forEach(channel => {
-      for (let i = 0; i < channel.length; i++) {
-        if(this.bits.length === 0) {
-          return;
-        }
-        // Second output - 1 when sending, 0 when idle.
-//      if(outputs.length > 1) {
-//        outputs[1][0][i] = 1;
-//      }
-        const freq = this.bits[0] ? 1200 : 2200;
-        const phase = this.startPhase + 2 * Math.PI * this.sampleIndex * freq / sampleRate;
-        channel[i] = Math.sin(phase);
-        this.sampleIndex++;
-        this.t += this.sampleDuration;
-        if(this.t >= this.bitDuration) {
-          this.startPhase += 2 * Math.PI * this.t * freq;
-          this.sampleIndex = 0;
-          this.t -= this.bitDuration;
-          this.bits.shift();
-        }
+    assertEqual('number of outputs', outputs.length, 2);
+    assertEqual('number of output[0] channels', outputs[0].length, 1);
+    assertEqual('number of output[1] channels', outputs[1].length, 1);
+
+    const output = outputs[0][0];
+    const enableOutput = outputs[1][0];
+
+    for (let i = 0; i < output.length; i++) {
+      if(this.bits.length === 0) {
+        return true;
       }
-    });
+
+      // Second output - 1 when sending, 0 when idle.
+      enableOutput[i] = 1;
+
+      const freq = this.bits[0] ? MARK_FREQ : SPACE_FREQ;
+      const phase = this.startPhase + 2 * Math.PI * this.sampleIndex * freq / sampleRate;
+      output[i] = Math.sin(phase);
+      this.sampleIndex++;
+      this.t += this.sampleDuration;
+      if(this.t >= this.bitDuration) {
+        this.startPhase += 2 * Math.PI * this.t * freq;
+        this.sampleIndex = 0;
+        this.t -= this.bitDuration;
+        this.bits.shift();
+      }
+    }
     return true;
   }
 }
@@ -49,7 +57,11 @@ registerProcessor('modulator', Modulator);
 
 class Exporter extends AudioWorkletProcessor {
   process (inputs, outputs, parameters) {
-    if(inputs[0][0].some(x => x !== 0)) {
+    assertEqual('number of inputs', inputs.length, 2);
+    assertEqual('number of input[0] channels', inputs[0].length, 1);
+    assertEqual('number of input[1] channels', inputs[1].length, 1);
+
+    if(inputs[1][0].some(x => x !== 0)) {
       this.port.postMessage(Float32Array.from(inputs[0][0]));
     }
     return true;
@@ -58,51 +70,76 @@ class Exporter extends AudioWorkletProcessor {
 
 registerProcessor('exporter', Exporter);
 
+class Integrator {
+  constructor(numSamples) {
+    this.buffer = new Float32Array(numSamples);
+    this.buffer.fill(0);
+    this.offset = 0;
+    this.accum = 0;
+  }
+
+  push(value) {
+    this.accum += value - this.buffer[this.offset];
+    this.buffer[this.offset] = value;
+    this.offset = (this.offset + 1) % this.buffer.length;
+  }
+
+  value() {
+    return this.accum;
+  }
+
+  valueSq() {
+    return this.value() * this.value();
+  }
+}
 
 class Demodulator extends AudioWorkletProcessor {
+  constructor(...args) {
+    super(...args);
+
+    this.numIntegrationSamples = sampleRate / BAUD_RATE;
+
+    this.markI  = new Integrator(this.numIntegrationSamples);
+    this.markQ  = new Integrator(this.numIntegrationSamples);
+    this.spaceI = new Integrator(this.numIntegrationSamples);
+    this.spaceQ = new Integrator(this.numIntegrationSamples);
+
+    this.sampleIndex = 0;
+  }
+
   process (inputs, outputs, parameters) {
-    inputs[0].forEach((input, channelIndex) => {
-      const markI = new Float32Array(input.length);
-      const markQ = new Float32Array(input.length);
-      const spaceI = new Float32Array(input.length);
-      const spaceQ = new Float32Array(input.length);
+    assertEqual('number of inputs', inputs.length, 1);
+    assertEqual('number of input channels', inputs[0].length, 1);
+    assertEqual('number of outputs', outputs.length, 1);
+    assertEqual('number of output channels', outputs[0].length, 1);
 
-      for (let i = 0; i < input.length; i++) {
-        markI [i] = input[i] * Math.sin(2 * Math.PI * i * 1200 / sampleRate);
-        markQ [i] = input[i] * Math.cos(2 * Math.PI * i * 1200 / sampleRate);
-        spaceI[i] = input[i] * Math.sin(2 * Math.PI * i * 2200 / sampleRate);
-        spaceQ[i] = input[i] * Math.cos(2 * Math.PI * i * 2200 / sampleRate);
-      }
+    const input = inputs[0][0];
+    const output = outputs[0][0];
+    for(let i = 0; i < input.length; i++) {
+      this.markI.push(input[i] * Math.sin(2 * Math.PI * this.sampleIndex * MARK_FREQ / sampleRate));
+      this.markQ.push(input[i] * Math.cos(2 * Math.PI * this.sampleIndex * MARK_FREQ / sampleRate));
+      this.spaceI.push(input[i] * Math.sin(2 * Math.PI * this.sampleIndex * SPACE_FREQ / sampleRate));
+      this.spaceQ.push(input[i] * Math.cos(2 * Math.PI * this.sampleIndex * SPACE_FREQ / sampleRate));
 
-      let markIAccum = 0;
-      let markQAccum = 0;
-      let spaceIAccum = 0;
-      let spaceQAccum = 0;
+      output[i] = clamp(
+        this.markI.valueSq() + this.markQ.valueSq()
+        - this.spaceI.valueSq() - this.spaceQ.valueSq()
+      );
 
-      const numIntegrationSamples = Math.floor(sampleRate / 1200);
-
-      for (let i = 0; i < input.length; i++) {
-        markIAccum  += markI[i];
-        markQAccum  += markQ[i];
-        spaceIAccum += spaceI[i];
-        spaceQAccum += spaceQ[i];
-
-        if(i >= numIntegrationSamples) {
-          markIAccum  -= markI[i - numIntegrationSamples];
-          markQAccum  -= markQ[i - numIntegrationSamples];
-          spaceIAccum -= spaceI[i - numIntegrationSamples];
-          spaceQAccum -= spaceQ[i - numIntegrationSamples];
-        }
-
-        outputs[0][channelIndex][i] =
-          Math.min(1, Math.max(-1, 
-            0.1 * 
-          (markIAccum * markIAccum + markQAccum * markQAccum
-          - spaceIAccum * spaceIAccum - spaceQAccum * spaceQAccum)));
-      }
-    });
+      this.sampleIndex++;
+    }
     return true;
   }
+}
+
+function assertEqual(name, value, expected) {
+  if(value !== expected) {
+    throw new Error('Invalid ' + name + ': ' + value + ' (expected ' + expected + ')');
+  }
+}
+
+function clamp(x) {
+  return Math.max(-1, Math.min(1, x));
 }
 
 registerProcessor('demodulator', Demodulator);
