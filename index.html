@@ -1,6 +1,11 @@
 <div>
-  <canvas id="oscilloscope" style="width: 100%; height: 480px; border: 1px solid black;"></canvas>
+  <canvas id="oscilloscope" width=1000 height=600></canvas>
 </div>
-<button onclick="audioCtx.close();">Stop</button>
-<button onclick="start().then(() => console.log('resumed'));">Start</button>
+<button id=stop onclick="audioCtx.close();" style="display:none">Stop</button>
+<button id=start onclick="
+    start().then(() => console.log('resumed'));
+    this.style.display='none';
+    document.getElementById('stop').style.display='';
+  ">Start</button>
+<button onclick="sendBits();">Send</button>
 <script src="main.js"></script>

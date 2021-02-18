@@ -8,7 +8,7 @@ var dataArray;
 async function start () {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   await audioCtx.audioWorklet.addModule('worklet.js')
-  generator = new AudioWorkletNode(audioCtx, 'sine-processor');
+  generator = new AudioWorkletNode(audioCtx, 'modulator');
 
   // const generator = audioCtx.createOscillator();
   // generator.start();
@@ -22,21 +22,13 @@ async function start () {
   dataArray = new Uint8Array(analyser.frequencyBinCount);
 
   draw();
-
-  sendBits([0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1]);
 }
-
-const BAUD_RATE = 1200;
 
 function sendBits(bits) {
-  const t = audioCtx.currentTime;
-  for(let i = 0; i < bits.length; i++) {
-    generator.parameters.get('frequency').setValueAtTime(bits[i] ? 1200 : 2200, t + i / BAUD_RATE);
-  }
-  generator.parameters.get('frequency').setValueAtTime(0, t + bits.length / BAUD_RATE);
-  setTimeout(() => sendBits(bits), 100 + 1000 * bits.length / BAUD_RATE);
+  bits = bits || [0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1];
+  console.log('send bits', bits);
+  generator.port.postMessage({ bits });
 }
-
 
 // Get a canvas defined with ID "oscilloscope"
 var canvas = document.getElementById("oscilloscope");
@@ -53,7 +45,7 @@ function draw() {
   canvasCtx.fillStyle = "rgb(200, 200, 200)";
   canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
-  canvasCtx.lineWidth = 2;
+  canvasCtx.lineWidth = 1;
   canvasCtx.strokeStyle = "rgb(0, 0, 0)";
 
   canvasCtx.beginPath();
