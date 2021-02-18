@@ -57,3 +57,52 @@ class Exporter extends AudioWorkletProcessor {
 }
 
 registerProcessor('exporter', Exporter);
+
+
+class Demodulator extends AudioWorkletProcessor {
+  process (inputs, outputs, parameters) {
+    inputs[0].forEach((input, channelIndex) => {
+      const markI = new Float32Array(input.length);
+      const markQ = new Float32Array(input.length);
+      const spaceI = new Float32Array(input.length);
+      const spaceQ = new Float32Array(input.length);
+
+      for (let i = 0; i < input.length; i++) {
+        markI [i] = input[i] * Math.sin(2 * Math.PI * i * 1200 / sampleRate);
+        markQ [i] = input[i] * Math.cos(2 * Math.PI * i * 1200 / sampleRate);
+        spaceI[i] = input[i] * Math.sin(2 * Math.PI * i * 2200 / sampleRate);
+        spaceQ[i] = input[i] * Math.cos(2 * Math.PI * i * 2200 / sampleRate);
+      }
+
+      let markIAccum = 0;
+      let markQAccum = 0;
+      let spaceIAccum = 0;
+      let spaceQAccum = 0;
+
+      const numIntegrationSamples = Math.floor(sampleRate / 1200);
+
+      for (let i = 0; i < input.length; i++) {
+        markIAccum  += markI[i];
+        markQAccum  += markQ[i];
+        spaceIAccum += spaceI[i];
+        spaceQAccum += spaceQ[i];
+
+        if(i >= numIntegrationSamples) {
+          markIAccum  -= markI[i - numIntegrationSamples];
+          markQAccum  -= markQ[i - numIntegrationSamples];
+          spaceIAccum -= spaceI[i - numIntegrationSamples];
+          spaceQAccum -= spaceQ[i - numIntegrationSamples];
+        }
+
+        outputs[0][channelIndex][i] =
+          Math.min(1, Math.max(-1, 
+            0.1 * 
+          (markIAccum * markIAccum + markQAccum * markQAccum
+          - spaceIAccum * spaceIAccum - spaceQAccum * spaceQAccum)));
+      }
+    });
+    return true;
+  }
+}
+
+registerProcessor('demodulator', Demodulator);

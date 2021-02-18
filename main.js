@@ -1,45 +1,22 @@
-// create web audio api context
-var audioCtx;
-var generator;
-
-var analyser;
-var dataArray;
-var dataEnd = 0;
-
-var exporter;
-
 async function start () {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   await audioCtx.audioWorklet.addModule('worklet.js')
   generator = new AudioWorkletNode(audioCtx, 'modulator');
 
-  exporter = new AudioWorkletNode(audioCtx, 'exporter');
+//  generator.connect(audioCtx.destination);
 
-  // const generator = audioCtx.createOscillator();
-  // generator.start();
-  // generator.frequency.setValueAtTime(440, audioCtx.currentTime);
+  startOscilloscope(audioCtx, '#osc1', generator);
 
-  generator.connect(audioCtx.destination);
+  const demodulator = new AudioWorkletNode(audioCtx, 'demodulator');
+  generator.connect(demodulator);
+  startOscilloscope(audioCtx, '#osc2', demodulator);
 
-  generator.connect(exporter);
-
-  dataArray = new Float32Array(512);
-
-  exporter.port.onmessage = (event) => {
-    const samples = event.data;
-    for(let i = 0; i < samples.length; i++) {
-      dataArray[dataEnd] = samples[i];
-      dataEnd = (dataEnd + 1) % dataArray.length;
-    }
-  };
-
-  draw();
+  sendBits([1,0,0,1,0,1,0,0,0,0,1]);
 }
 
 start();
 
 function sendBits(bits) {
-  bits = bits || [1,0,0,1,0,1];
   console.log('send bits', bits);
   generator.port.postMessage({ bits });
 }
@@ -56,40 +33,54 @@ function sendText(text) {
   sendBits(bits);
 }
 
-// Get a canvas defined with ID "oscilloscope"
-var canvas = document.getElementById("oscilloscope");
-var canvasCtx = canvas.getContext("2d");
+function startOscilloscope(audioCtx, selector, source) {
+  const exporter = new AudioWorkletNode(audioCtx, 'exporter');
+  source.connect(exporter);
 
-// draw an oscilloscope of the current audio source
+  var dataArray = new Float32Array(512);
+  var dataEnd = 0;
 
-function draw() {
-  requestAnimationFrame(draw);
+  exporter.port.onmessage = (event) => {
+    const samples = event.data;
+    for(let i = 0; i < samples.length; i++) {
+      dataArray[dataEnd] = samples[i];
+      dataEnd = (dataEnd + 1) % dataArray.length;
+    }
+  };
 
-  canvasCtx.fillStyle = "rgb(200, 200, 200)";
-  canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+  var canvas = document.querySelector(selector);
+  var canvasCtx = canvas.getContext("2d");
 
-  canvasCtx.lineWidth = 1;
-  canvasCtx.strokeStyle = "rgb(0, 0, 0)";
+  draw();
 
-  canvasCtx.beginPath();
+  function draw() {
+    requestAnimationFrame(draw);
 
-  var sliceWidth = canvas.width * 1.0 / dataArray.length;
-  var x = 0;
+    canvasCtx.fillStyle = "rgb(200, 200, 200)";
+    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
-  for (var i = 0; i < dataArray.length; i++) {
+    canvasCtx.lineWidth = 1;
+    canvasCtx.strokeStyle = "rgb(0, 0, 0)";
 
-    var v = 1 - dataArray[i];
-    var y = v * canvas.height / 2;
+    canvasCtx.beginPath();
 
-    if (i === 0) {
-      canvasCtx.moveTo(x, y);
-    } else {
-      canvasCtx.lineTo(x, y);
+    var sliceWidth = canvas.width * 1.0 / dataArray.length;
+    var x = 0;
+
+    for (var i = 0; i < dataArray.length; i++) {
+
+      var v = 1 - dataArray[i] * 0.95;
+      var y = v * canvas.height / 2;
+
+      if (i === 0) {
+        canvasCtx.moveTo(x, y);
+      } else {
+        canvasCtx.lineTo(x, y);
+      }
+
+      x += sliceWidth;
     }
 
-    x += sliceWidth;
+    canvasCtx.stroke();
   }
-
-//  canvasCtx.lineTo(canvas.width, canvas.height / 2);
-  canvasCtx.stroke();
 }
