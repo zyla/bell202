@@ -1,0 +1,6 @@
+<div>
+  <canvas id="oscilloscope" style="width: 100%; height: 480px; border: 1px solid black;"></canvas>
+</div>
+<button onclick="audioCtx.close();">Stop</button>
+<button onclick="start().then(() => console.log('resumed'));">Start</button>
+<script src="main.js"></script>
